@@ -19,6 +19,7 @@ import { RedisStore } from "connect-redis";
 import { setupCanScreen } from "./CanScreen.js"
 import pool from "./db.js";
 import cors from "cors";
+import { scrambleMiddleware, startSessionCleanup } from './scrambleMiddleware.js';
 import axios from "axios";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -87,6 +88,8 @@ app.use(
     sessionMiddleware
 );
 
+app.use(scrambleMiddleware);
+startSessionCleanup(redisClient);
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
