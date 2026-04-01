@@ -19,7 +19,7 @@ import { RedisStore } from "connect-redis";
 import { setupCanScreen } from "./CanScreen.js"
 import pool from "./db.js";
 import cors from "cors";
-import { scrambleMiddleware, startSessionCleanup } from './scrambleMiddleware.js';
+import { buildScrambleMap, scrambleMiddleware, startSessionCleanup } from './scrambleMiddleware.js';
 import axios from "axios";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -40,6 +40,9 @@ try {
 
 let newgames = [];
 const newgamesFilePath = path.join(__dirname, "new.json");
+await buildScrambleMap([
+  path.join(__dirname, 'static'),
+]);
 try {
   const data = fs.readFileSync(newgamesFilePath, "utf8");
   newgames = JSON.parse(data);
