@@ -1,5 +1,4 @@
 import crypto from "crypto";
-import { postToAdserver } from "./adserverClient.js";
 
 const DEFAULT_PAGE_VISIT_EXCLUDE_PREFIXES = [
     "/api/",
@@ -54,12 +53,27 @@ export function createPageVisitLogger(options = {}) {
         }
 
         const pageUrl = buildAbsoluteRequestUrl(req);
+        const apiOrigin = options.apiOrigin || `${req.protocol}://${req.get("host")}`;
+        const apiPath = options.apiPath || "/api/urls";
 
         Promise.resolve()
-            .then(() => postToAdserver(req, "/api/urls", {
-                url: pageUrl,
-                visitHash,
-            }, options))
+            .then(() => fetch(`${apiOrigin}${apiPath}`, {
+                method: "POST",
+                headers: {
+                    Accept: "application/json",
+                    "Content-Type": "application/json",
+                    "User-Agent": req.get("user-agent") || "CanLite-Page-Visit-Logger/1.0",
+                },
+                body: JSON.stringify({
+                    url: pageUrl,
+                    visitHash,
+                }),
+            }))
+            .then(async (response) => ({
+                ok: response.ok,
+                status: response.status,
+                body: await response.json().catch(() => ({})),
+            }))
             .then((result) => {
                 if (!result?.ok && result?.status !== 409) {
                     console.error("Failed to log page visit:", result?.body || result);
