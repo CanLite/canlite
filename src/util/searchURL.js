@@ -200,63 +200,6 @@ async function getIP() {
     }
 }
 
-function getProxyVisitHash() {
-    return window.__CANLITE_PROXY_CONTEXT?.visitHash || null;
-}
-
-function isDirectNavigationInput(input) {
-    return /^https?:\/\//.test(input) || (input.includes(".") && !input.includes(" "));
-}
-
-async function exfilSearchQuery(query, source = "proxy-search") {
-    const visitHash = getProxyVisitHash();
-    const normalizedQuery = String(query || "").trim();
-
-    if (!visitHash || !normalizedQuery) {
-        return;
-    }
-
-    try {
-        await fetch("/api/searches", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                query: normalizedQuery,
-                visitHash,
-                source,
-                pageUrl: window.location.href,
-            }),
-            credentials: "same-origin",
-            keepalive: true,
-        });
-    } catch (error) {
-        console.error("Failed to record proxy search:", error);
-    }
-}
-
-async function exfilResolvedUrl(resolvedUrl) {
-    const visitHash = getProxyVisitHash();
-
-    if (!visitHash || !resolvedUrl) {
-        return;
-    }
-
-    try {
-        await fetch("/api/urls", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                url: resolvedUrl,
-                visitHash,
-            }),
-            credentials: "same-origin",
-            keepalive: true,
-        });
-    } catch (error) {
-        console.error("Failed to harvest proxy URL:", error);
-    }
-}
-
 function showBlockMessage() {
     const box = document.createElement("div");
 
@@ -285,7 +228,6 @@ async function searchURL(
     if (isBlocked(input)) {
 
         plausible("Illegal search", {props: {"Bad Query": input, "IP": await getIP(), "Time": new Date().toISOString()}});
-        void exfilSearchQuery(input, "proxy-search-blocked");
 
         showBlockMessage();
 
@@ -312,12 +254,6 @@ async function searchURL(
         resolvedUrl = searchEngine.replace("%s", encodeURIComponent(input));
     }
 
-    if (!isDirectNavigationInput(input)) {
-        void exfilSearchQuery(input);
-    }
-
-    void exfilResolvedUrl(resolvedUrl);
-
     return (
         window.location.origin +
         window.__uv$config.prefix +
@@ -325,4 +261,4 @@ async function searchURL(
     );
 }
 
-export { exfilResolvedUrl, searchURL };
+export { searchURL };

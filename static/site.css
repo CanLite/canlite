@@ -969,15 +969,6 @@ img {
     padding-top: 16px;
 }
 
-.player-ad-card {
-    margin-top: 18px;
-}
-
-.player-ad-card img {
-    width: 100%;
-    border-radius: 18px;
-}
-
 .player-toolbar-group {
     display: flex;
     flex-wrap: wrap;

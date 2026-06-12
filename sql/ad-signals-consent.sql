@@ -12,7 +12,3 @@ ALTER TABLE users
 
 CREATE INDEX IF NOT EXISTS idx_users_consent_version
     ON users (consent_version);
-
--- Apply the ad-signal tables from the sibling adserver project as well:
---   ../adserver/sql/create_url_submissions.sql
---   ../adserver/sql/create_ad_auction_tables.sql

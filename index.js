@@ -17,7 +17,6 @@ import { getCreditBalance, roundCredits } from "./store.js";
 import redisClient from "./redis.js";
 import { getAccountPrivateLink, getOwnedPrivateLinks } from "./privateLinks.js";
 import { canAccessPrivateLinkUpgrade, createPrivateLinkRequestGate } from "./privateLinkGate.js";
-import { attachVisitHash, createPageVisitLogger, getOrCreateVisitHash } from "./adSignals.js";
 import {
   CURRENT_CONSENT_VERSION,
   hasAcceptedCurrentConsent,
@@ -29,7 +28,6 @@ import { applyUserConsent } from "./consentService.js";
 import { getSessionUser } from "./sessionUser.js";
 import { getDiscordLinkSummaryForUser } from "./discordLinks.js";
 
-const DEFAULT_ADSERVER_BASE_URL = "http://127.0.0.1:3010";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const app = express();
@@ -210,8 +208,6 @@ app.use((req, res, next) => {
   res.locals.currentConsentVersion = CURRENT_CONSENT_VERSION;
   next();
 });
-app.use(attachVisitHash);
-
 app.use((req, res, next) => {
   try {
     const clientIp = requestIp.getClientIp(req);
@@ -309,11 +305,6 @@ app.use(async (req, res, next) => {
     return next();
   }
 });
-
-app.use(createPageVisitLogger({
-  adserverBaseUrl: process.env.ADSERVER_BASE_URL || DEFAULT_ADSERVER_BASE_URL,
-  internalAccessKey: process.env.ADSERVER_INTERNAL_ACCESS_KEY || null,
-}));
 
 app.get("/uv/sw.js", (req, res) => {
   res.set("Service-Worker-Allowed", "/~/uv/");
@@ -541,129 +532,8 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname + "/static/landing/index.html"));
 });
 
-app.get("/proxe", async (req, res, next) => {
-  try {
-    const visitHash = getOrCreateVisitHash(req);
-    const behavioralBaseUrl = String(
-      process.env.BEHAVIORAL_INTENT_BASE_URL
-      || process.env.ADSERVER_BASE_URL
-      || DEFAULT_ADSERVER_BASE_URL
-    ).replace(/\/$/, "");
-    const filePath = path.join(__dirname, "dist", "index.html");
-    const html = await fs.promises.readFile(filePath, "utf8");
-    const proxyContext = {
-      visitHash,
-      accountId: req.session?.user_id || null,
-      behavioralBaseUrl,
-    };
-    const bootstrap = [
-      `<script>window.__CANLITE_PROXY_CONTEXT=${JSON.stringify(proxyContext)};</script>`,
-      `<script defer src="${behavioralBaseUrl}/sdk/behavioral-intent.js"></script>`,
-    ].join("");
-    const behavioralInit = `
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-  var ctx = window.__CANLITE_PROXY_CONTEXT || {};
-  var start = function () {
-    if (!window.BehavioralIntent) {
-      window.setTimeout(start, 100);
-      return;
-    }
-
-    var resolveAccountId = async function () {
-      if (ctx.accountId) {
-        return ctx.accountId;
-      }
-      var token = window.localStorage.getItem("token");
-      if (!token) {
-        return null;
-      }
-      try {
-        var response = await window.fetch("/api/check", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token: token })
-        });
-        if (!response.ok) {
-          return null;
-        }
-        var data = await response.json();
-        if (data && data.loggedIn && data.userId) {
-          ctx.accountId = String(data.userId);
-          if (data.adfree) {
-            window.userAdfree = true;
-          }
-          return ctx.accountId;
-        }
-      } catch (error) {}
-      return null;
-    };
-
-    resolveAccountId().then(function (accountId) {
-    var slotId = "canlite-sdk-ad-slot";
-    if (!document.getElementById(slotId)) {
-      var slot = document.createElement("div");
-      slot.id = slotId;
-      slot.style.position = "fixed";
-      slot.style.right = "20px";
-      slot.style.bottom = "20px";
-      slot.style.width = "320px";
-      slot.style.maxWidth = "calc(100vw - 24px)";
-      slot.style.zIndex = "2147482600";
-      document.body.appendChild(slot);
-    }
-
-    var sdk = window.BehavioralIntent.init({
-      apiBase: ctx.behavioralBaseUrl || "",
-      autoTrackPage: false,
-      autoServe: false,
-      anonymousId: ctx.visitHash ? "anon:" + ctx.visitHash : null,
-      sessionId: ctx.visitHash || null,
-      userId: accountId || null,
-      autoIdentify: Boolean(accountId),
-      popup: {
-        enabled: true,
-        intervalMs: 5 * 60 * 1000,
-        title: "Sponsored",
-        ctaLabel: "Open offer",
-        sessionSignals: {
-          placement_id: "canlite-proxy-popup",
-          page_context: "canlite-proxy-popup",
-          page_url: window.location.href,
-          page_title: document.title
-        }
-      }
-    });
-
-    window.__CANLITE_BEHAVIORAL = sdk;
-    sdk.serveAds({
-      positions: { corner: "#" + slotId },
-      topK: 1,
-      sessionSignals: {
-        placement_id: "canlite-proxy-corner",
-        page_context: "canlite-proxy-corner",
-        page_url: window.location.href,
-        page_title: document.title
-      }
-    }).catch(function () {});
-    });
-  };
-
-  start();
-});
-</script>`;
-
-    res.type("html");
-    const withBootstrap = html.includes("</head>")
-      ? html.replace("</head>", `${bootstrap}</head>`)
-      : `${bootstrap}${html}`;
-    const finalHtml = withBootstrap.includes("</body>")
-      ? withBootstrap.replace("</body>", `${behavioralInit}</body>`)
-      : `${withBootstrap}${behavioralInit}`;
-    res.send(finalHtml);
-  } catch (error) {
-    next(error);
-  }
+app.get("/proxe", (req, res) => {
+  res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 
 app.use((req, res, next) => {

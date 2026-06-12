@@ -215,17 +215,6 @@
                         </div>
                     </div>
 
-                    <aside class="promo-card player-ad-card">
-                        <h3>Advertisement</h3>
-                        <div
-                            id="playSidebarAdSlot"
-                            class="canlite-ad-slot"
-                            data-placement-id="play-sidebar"
-                            data-ad-type="banner"
-                            data-width="300"
-                            data-height="250"
-                        ></div>
-                    </aside>
                 </div>
 
                 <div class="stack">
@@ -266,16 +255,6 @@
 
 <script>
     const canliteGameName = <%- JSON.stringify(game.name).replace(/<\//g, "<\\/") %>;
-    const canliteGameDescription = <%- JSON.stringify(game.desc || "").replace(/<\//g, "<\\/") %>;
-    const canliteGameTagsRaw = <%- JSON.stringify(game.tags || "").replace(/<\//g, "<\\/") %>;
-    const canliteVisitHash = <%- JSON.stringify(visitHash || null).replace(/<\//g, "<\\/") %>;
-    window.__CANLITE_AD_CONTEXT = {
-        visitHash: canliteVisitHash,
-        pageUrl: window.location.href,
-        pageTitle: canliteGameName,
-        pageContext: canliteGameDescription
-    };
-
     document.getElementById('year').textContent = new Date().getFullYear();
     if(localStorage.getItem('token')) {
         window.addEventListener("storage", () => {
@@ -295,7 +274,6 @@
 
     const initializePlayPage = function () {
         const gameName = canliteGameName;
-        const gameDescription = canliteGameDescription;
         const gameType = <%- JSON.stringify(game.type).replace(/<\//g, "<\\/") %>;
         const gamePath = <%- JSON.stringify(game.path).replace(/<\//g, "<\\/") %>;
         const openTarget = <%- JSON.stringify(gameHref).replace(/<\//g, "<\\/") %>;
@@ -314,258 +292,8 @@
         const playerStatusText = document.getElementById("playerStatusText");
         const playerSideStatus = document.getElementById("playerSideStatus");
         const playerSpinner = document.getElementById("playerSpinner");
-        const playSidebarAdSlot = document.getElementById("playSidebarAdSlot");
-        const gameTags = String(canliteGameTagsRaw).split(",").map((item) => item.trim()).filter(Boolean);
         let readyCheckInterval;
         let loadTimeout;
-        let loadscreenAdRequested = false;
-        let loadscreenAdRequestInFlight = false;
-        let loadscreenAdRequestAttempts = 0;
-        let loadscreenAdImpressionSent = false;
-        const debugSidebarAd = (...args) => {
-            if (window.__CANLITE_AD_DEBUG === true) {
-                console.debug("[play-sidebar-ad]", ...args);
-            }
-        };
-
-        const buildAdSignals = () => {
-            const rawTerms = [
-                gameName,
-                ...gameTags.slice(0, 6),
-            ];
-            const normalizedTerms = [];
-            const seen = new Set();
-
-            for (const term of rawTerms) {
-                const value = String(term || "").trim().toLowerCase();
-                if (!value || seen.has(value)) {
-                    continue;
-                }
-                seen.add(value);
-                normalizedTerms.push(value);
-            }
-
-            return normalizedTerms.slice(0, 8);
-        };
-
-        const resolveAdfreeState = async () => {
-            if (window.userAdfree === true) {
-                return true;
-            }
-
-            const token = localStorage.getItem("token");
-            if (!token) {
-                return false;
-            }
-
-            try {
-                const response = await fetch("/api/check", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ token }),
-                });
-
-                if (!response.ok) {
-                    return false;
-                }
-
-                const data = await response.json();
-                if (data?.loggedIn && data?.adfree) {
-                    window.userAdfree = true;
-                    return true;
-                }
-            } catch (error) {
-                console.error("Failed to resolve adfree state for play sidebar ad:", error);
-            }
-
-            return false;
-        };
-
-        const postAdEvent = async (auctionId, eventType, token) => {
-            if (!auctionId || !eventType || !token) {
-                debugSidebarAd("Skipped event post due to missing fields.", {
-                    auctionId,
-                    eventType,
-                    hasToken: Boolean(token),
-                });
-                return;
-            }
-
-            try {
-                debugSidebarAd("Posting ad event.", { auctionId, eventType });
-                await fetch("/api/ads/events", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ auctionId, eventType, token }),
-                });
-                debugSidebarAd("Ad event posted.", { auctionId, eventType });
-            } catch (error) {
-                console.error("Failed to post play sidebar ad event:", error);
-            }
-        };
-
-        const renderSidebarAd = async (result) => {
-            const winner = result?.winner;
-            if (!winner?.adm || !playSidebarAdSlot) {
-                debugSidebarAd("Skipped render because ad markup or slot is missing.", {
-                    hasAdm: Boolean(winner?.adm),
-                    hasSlot: Boolean(playSidebarAdSlot),
-                });
-                return;
-            }
-
-            debugSidebarAd("Rendering sidebar ad.", {
-                auctionId: result?.auction?.id || null,
-                affiliate: winner?.affiliate === true,
-                hasImpressionToken: Boolean(winner?.tracking?.impressionToken),
-            });
-
-            const frame = document.createElement("iframe");
-            frame.className = "adserver-ad-frame";
-            frame.width = String(winner.w || 300);
-            frame.height = String(winner.h || 250);
-            frame.loading = "eager";
-            frame.referrerPolicy = "no-referrer";
-            frame.setAttribute(
-                "sandbox",
-                "allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
-            );
-
-            frame.style.border = "0";
-            frame.style.display = "block";
-            frame.style.width = "100%";
-            frame.style.maxWidth = String(winner.w || 300) + "px";
-            frame.style.height = String(winner.h || 250) + "px";
-            frame.style.margin = "0 auto";
-
-            playSidebarAdSlot.replaceChildren(frame);
-
-            frame.srcdoc = [
-                "<!DOCTYPE html>",
-                "<html lang=\"en\">",
-                "<head>",
-                "  <meta charset=\"utf-8\">",
-                "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
-                "  <base target=\"_top\">",
-                "  <style>html,body{margin:0;padding:0;background:transparent;overflow:hidden;}a{text-decoration:none;}</style>",
-                "</head>",
-                "<body>",
-                winner.adm,
-                "</body>",
-                "</html>",
-            ].join("");
-
-            if (!loadscreenAdImpressionSent && winner.tracking?.impressionToken) {
-                loadscreenAdImpressionSent = true;
-                await postAdEvent(result.auction?.id, "impression", winner.tracking.impressionToken);
-            } else {
-                debugSidebarAd("Skipped impression event post.", {
-                    alreadySent: loadscreenAdImpressionSent,
-                    hasImpressionToken: Boolean(winner?.tracking?.impressionToken),
-                });
-            }
-        };
-
-        const requestSidebarAd = async () => {
-            if (loadscreenAdRequested || loadscreenAdRequestInFlight) {
-                return;
-            }
-
-            loadscreenAdRequestInFlight = true;
-            loadscreenAdRequestAttempts += 1;
-            debugSidebarAd("Sidebar ad request started.", {
-                attempt: loadscreenAdRequestAttempts,
-            });
-
-            if (await resolveAdfreeState()) {
-                debugSidebarAd("Skipped sidebar ad request because user is adfree.");
-                loadscreenAdRequested = true;
-                loadscreenAdRequestInFlight = false;
-                return;
-            }
-
-            const keywords = buildAdSignals();
-            if (keywords.length === 0) {
-                debugSidebarAd("Skipped sidebar ad request because there are no keywords.");
-                loadscreenAdRequested = true;
-                loadscreenAdRequestInFlight = false;
-                return;
-            }
-
-            const controller = new AbortController();
-            const timeoutId = window.setTimeout(() => controller.abort(), 10000);
-
-            try {
-                const response = await fetch("/api/ads/auction", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    signal: controller.signal,
-                    body: JSON.stringify({
-                        visitHash: window.__CANLITE_AD_CONTEXT?.visitHash || null,
-                        placementId: playSidebarAdSlot?.dataset.placementId || "play-sidebar",
-                        pageUrl: window.location.href,
-                        pageTitle: gameName,
-                        pageContext: gameDescription || gameName,
-                        adType: playSidebarAdSlot?.dataset.adType || "banner",
-                        width: Number(playSidebarAdSlot?.dataset.width || 300),
-                        height: Number(playSidebarAdSlot?.dataset.height || 250),
-                        keywords,
-                        query: gameName,
-                    }),
-                });
-                const result = await response.json();
-                debugSidebarAd("Auction response received.", {
-                    ok: response.ok,
-                    status: response.status,
-                    hasWinner: Boolean(result?.winner),
-                    hasAdm: Boolean(result?.winner?.adm),
-                    affiliate: result?.winner?.affiliate === true,
-                    hasImpressionToken: Boolean(result?.winner?.tracking?.impressionToken),
-                });
-
-                loadscreenAdRequested = true;
-
-                if (!response.ok || !result?.winner?.adm || result?.winner?.affiliate !== true) {
-                    debugSidebarAd("Skipped sidebar ad render because auction result did not qualify.", {
-                        ok: response.ok,
-                        hasAdm: Boolean(result?.winner?.adm),
-                        affiliate: result?.winner?.affiliate === true,
-                    });
-                    return;
-                }
-
-                await renderSidebarAd(result);
-            } catch (error) {
-                if (error?.name === "AbortError") {
-                    debugSidebarAd("Sidebar ad request aborted.", {
-                        attempt: loadscreenAdRequestAttempts,
-                    });
-                } else {
-                    console.error("Failed to request play sidebar ad:", error);
-                }
-
-                if (loadscreenAdRequestAttempts < 2) {
-                    debugSidebarAd("Retrying sidebar ad request after transient failure.", {
-                        nextAttempt: loadscreenAdRequestAttempts + 1,
-                    });
-                    window.setTimeout(() => {
-                        void requestSidebarAd();
-                    }, 600);
-                } else {
-                    loadscreenAdRequested = true;
-                }
-            } finally {
-                window.clearTimeout(timeoutId);
-                loadscreenAdRequestInFlight = false;
-            }
-        };
-
-        const queueSidebarAdRequest = () => {
-            window.setTimeout(() => {
-                debugSidebarAd("Queue fired for sidebar ad request.");
-                void requestSidebarAd();
-            }, 0);
-        };
 
         const getFavorites = () => {
             const favoritesJSON = localStorage.getItem("canlitefavorites");
@@ -750,7 +478,6 @@
             }
         });
 
-        queueSidebarAdRequest();
         setFavoriteState();
         loadGame();
     };

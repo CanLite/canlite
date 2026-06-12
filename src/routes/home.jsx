@@ -7,7 +7,7 @@ import RotateCW from "../icons/rotate-cw";
 import ViewSidebar from "../icons/view-sidebar";
 import SettingsIcon from "../icons/settings";
 import Fullscreen from "../icons/fullscreen";
-import { exfilResolvedUrl, searchURL } from "../util/searchURL";
+import { searchURL } from "../util/searchURL";
 import Settings from "../components/settings";
 
 const Home = function () {
@@ -102,15 +102,6 @@ const Home = function () {
         this.currentHasURL = this.tabs[this.current].hasOwnProperty("url");
     });
 
-    const harvestTabUrl = (tab, url) => {
-        if (!url || tab.lastHarvestedUrl === url) {
-            return;
-        }
-
-        tab.lastHarvestedUrl = url;
-        void exfilResolvedUrl(url);
-    };
-
     const createIFrame = async (tab) => {
         const newIFrame = document.createElement("iframe");
         newIFrame.src = await searchURL(tab.url, this.searchEngine);
@@ -125,8 +116,6 @@ const Home = function () {
                     window.__uv$config.prefix,
                 )[1],
             );
-            harvestTabUrl(tab, tab.url);
-
             if (this.search) {
                 this.search.value = this.tabs[this.current].url || "";
             }
